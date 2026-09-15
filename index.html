@@ -320,11 +320,17 @@
             <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
                     <div>
-                        <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-                            <i data-lucide="users" class="w-5 h-5 text-indigo-600"></i>
-                            Rekapitulasi Data Murid (Guru / Admin)
-                        </h3>
-                        <p class="text-xs text-slate-500">Daftar riwayat responden yang telah menyelesaikan survei.</p>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <i data-lucide="users" class="w-5 h-5 text-indigo-600"></i>
+                                Rekapitulasi Data Murid (Guru / Admin)
+                            </h3>
+                            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 flex items-center gap-1 border border-emerald-200">
+                                <i data-lucide="hard-drive" class="w-3 h-3"></i>
+                                Penyimpanan Permanen Aktif
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1">Daftar riwayat responden tersimpan otomatis di browser & tetap tersimpan walau browser ditutup.</p>
                     </div>
                     <div class="flex gap-2 no-print">
                         <button onclick="exportToExcel()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors shadow-sm">
@@ -370,7 +376,7 @@
     <!-- Footer -->
     <footer class="bg-white border-t border-slate-200 py-4 mt-auto no-print">
         <div class="max-w-6xl mx-auto px-4 text-center text-xs text-slate-500">
-            Instrumen Survei Kompetensi Kewirausahaan Murid &bull; Pemanfaatan Kantin Sekolah sebagai Laboratorium Mini Pembelajaran
+            Instrumen ini dikembangkan oleh Kurikulum SMK N 1 Karanganyar
         </div>
     </footer>
 
@@ -456,8 +462,59 @@
             renderQuestions();
             document.getElementById('survey-date').valueAsDate = new Date();
             lucide.createIcons();
+            loadFormDraft();
             loadHistoryFromStorage();
+
+            // Auto-save form inputs on change
+            document.getElementById('student-name').addEventListener('input', saveFormDraft);
+            document.getElementById('student-class').addEventListener('input', saveFormDraft);
+            document.getElementById('survey-date').addEventListener('change', saveFormDraft);
         });
+
+
+        // Save Form Draft to LocalStorage
+        function saveFormDraft() {
+            try {
+                const draft = {
+                    name: document.getElementById('student-name').value,
+                    studentClass: document.getElementById('student-class').value,
+                    date: document.getElementById('survey-date').value,
+                    answers: currentAnswers
+                };
+                localStorage.setItem('entrepreneur_survey_draft', JSON.stringify(draft));
+            } catch (e) {
+                console.warn("Gagal menyimpan draf:", e);
+            }
+        }
+
+        // Restore Form Draft from LocalStorage
+        function loadFormDraft() {
+            try {
+                const saved = localStorage.getItem('entrepreneur_survey_draft');
+                if (!saved) return;
+                const draft = JSON.parse(saved);
+                if (draft.name) document.getElementById('student-name').value = draft.name;
+                if (draft.studentClass) document.getElementById('student-class').value = draft.studentClass;
+                if (draft.date) document.getElementById('survey-date').value = draft.date;
+                if (draft.answers && typeof draft.answers === 'object') {
+                    currentAnswers = draft.answers;
+                    Object.keys(currentAnswers).forEach(qId => {
+                        const score = currentAnswers[qId];
+                        const radio = document.querySelector(`input[name="q_${qId}"][value="${score}"]`);
+                        if (radio) radio.checked = true;
+                    });
+                    updateProgress();
+                }
+            } catch (e) {
+                console.warn("Gagal memuat draf:", e);
+            }
+        }
+
+        function clearFormDraft() {
+            try {
+                localStorage.removeItem('entrepreneur_survey_draft');
+            } catch (e) {}
+        }
 
         // Render Questions in Form
         function renderQuestions() {
@@ -512,6 +569,7 @@
         function selectAnswer(qId, score) {
             currentAnswers[qId] = score;
             updateProgress();
+            saveFormDraft();
         }
 
         function updateProgress() {
@@ -527,6 +585,7 @@
             currentAnswers = {};
             document.getElementById('survey-form').reset();
             document.getElementById('survey-date').valueAsDate = new Date();
+            clearFormDraft();
             updateProgress();
             showModal("Form Direset", "Semua isian survei telah dibersihkan.");
         }
@@ -575,8 +634,11 @@
                 answers: { ...currentAnswers }
             };
 
-            // Save to Local Storage History
+            // Save to Local Storage History (Permanent)
             saveToHistory(currentSubmission);
+
+            // Clear active draft after submission
+            clearFormDraft();
 
             // Display Results
             displayResults(currentSubmission);
@@ -768,16 +830,29 @@
         // Local Storage Management
         function getHistory() {
             try {
-                return JSON.parse(localStorage.getItem('entrepreneur_survey_history') || '[]');
+                const stored = localStorage.getItem('entrepreneur_survey_history');
+                return stored ? JSON.parse(stored) : [];
             } catch (e) {
+                console.error("Gagal membaca LocalStorage:", e);
                 return [];
             }
         }
 
         function saveToHistory(submission) {
-            const history = getHistory();
-            history.unshift(submission);
-            localStorage.setItem('entrepreneur_survey_history', JSON.stringify(history));
+            try {
+                const history = getHistory();
+                // Hindari duplikasi jika id sama
+                const index = history.findIndex(h => h.id === submission.id);
+                if (index !== -1) {
+                    history[index] = submission;
+                } else {
+                    history.unshift(submission);
+                }
+                localStorage.setItem('entrepreneur_survey_history', JSON.stringify(history));
+            } catch (e) {
+                console.error("Gagal menyimpan ke LocalStorage:", e);
+                showModal("Peringatan Penyimpanan", "Gagal menyimpan ke memori permanen browser.");
+            }
         }
 
         function loadHistoryFromStorage() {
