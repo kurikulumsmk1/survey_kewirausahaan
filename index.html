@@ -46,7 +46,7 @@
                 <div>
                     <div class="flex items-center gap-2">
                         <h1 class="text-lg font-bold leading-tight">Survei Kewirausahaan Murid</h1>
-                        <span id="cloud-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-800 text-indigo-200 border border-indigo-500/30 flex items-center gap-1">
+                        <span id="cloud-status-badge" onclick="openCloudConfigModal()" title="Klik untuk cek/atur koneksi database cloud" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-800 text-indigo-200 border border-indigo-500/30 flex items-center gap-1 cursor-pointer hover:bg-indigo-700 transition-colors">
                             <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
                             <span>Menghubungkan Cloud...</span>
                         </span>
@@ -338,10 +338,18 @@
                         </div>
                         <p class="text-xs text-slate-500 mt-1">Seluruh data yang diisi oleh murid dari komputer/hp manapun otomatis terkumpul secara terpusat di sini secara real-time.</p>
                     </div>
-                    <div class="flex gap-2 no-print">
+                    <div class="flex flex-wrap gap-2 no-print">
+                        <button onclick="triggerFileImport()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors border border-slate-300">
+                            <i data-lucide="upload" class="w-4 h-4"></i>
+                            Impor Data
+                        </button>
                         <button onclick="exportToExcel()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors shadow-sm">
                             <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
-                            Ekspor Semua ke Excel
+                            Ekspor ke Excel
+                        </button>
+                        <button onclick="openCloudConfigModal()" class="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors border border-indigo-200">
+                            <i data-lucide="cloud-cog" class="w-4 h-4"></i>
+                            Koneksi Cloud
                         </button>
                     </div>
                 </div>
@@ -383,9 +391,39 @@
     <!-- Footer -->
     <footer class="bg-white border-t border-slate-200 py-4 mt-auto no-print">
         <div class="max-w-6xl mx-auto px-4 text-center text-xs text-slate-500">
-            Instrumen Evaluasi Diri Kewirausahaan Murid &bull; SMK N 1 Karanganyar &bull; Cloud Realtime Database Enabled
+            Instrumen ini dikembangkan oleh Kurikulum SMK N 1 Karanganyar &bull; Cloud Realtime Database Enabled
         </div>
     </footer>
+
+    <!-- Hidden Input File for Import -->
+    <input type="file" id="import-file-input" accept=".json,.csv" class="hidden" onchange="handleFileImport(event)">
+
+    <!-- Cloud Settings Modal -->
+    <div id="cloud-config-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h4 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <i data-lucide="cloud" class="w-5 h-5 text-indigo-600"></i>
+                    Status & Pengaturan Database Cloud
+                </h4>
+                <button onclick="closeCloudConfigModal()" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
+            </div>
+            <div id="cloud-info-box" class="p-3.5 rounded-xl text-xs space-y-1.5 bg-amber-50 border border-amber-200 text-amber-900">
+                <!-- Injected via JS -->
+            </div>
+            <div class="space-y-2">
+                <label class="block text-xs font-semibold text-slate-700">Firebase Config JSON (Untuk Akses Lintas Perangkat Standalone):</label>
+                <textarea id="firebase-config-input" rows="4" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "..."}' class="w-full text-xs font-mono p-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
+                <p class="text-[11px] text-slate-500 leading-normal">
+                    Jika aplikasi ini di-copy ke Flashdisk / HP murid untuk diisi mandiri, masukkan konfigurasi Firebase sekolah agar seluruh hasil tetap otomatis masuk ke 1 Database Cloud terpusat.
+                </p>
+            </div>
+            <div class="flex justify-end gap-2 pt-2 border-t">
+                <button onclick="resetCloudConfig()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg">Reset</button>
+                <button onclick="saveCustomCloudConfig()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg">Simpan & Hubungkan</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Modal Notification / Dialog -->
     <div id="custom-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
@@ -448,9 +486,17 @@
             document.getElementById('student-class').addEventListener('input', saveFormDraft);
             document.getElementById('survey-date').addEventListener('change', saveFormDraft);
 
+            // Determine Firebase Config Source
+            let firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+            if (!firebaseConfig) {
+                try {
+                    const savedConfig = localStorage.getItem('custom_firebase_config');
+                    if (savedConfig) firebaseConfig = JSON.parse(savedConfig);
+                } catch (e) {}
+            }
+
             try {
-                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-                if (firebaseConfig) {
+                if (firebaseConfig && firebaseConfig.apiKey) {
                     const app = initializeApp(firebaseConfig);
                     auth = getAuth(app);
                     db = getFirestore(app);
@@ -458,8 +504,13 @@
                     // Authentication Step
                     const initialToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
                     if (initialToken) {
-                        const userCred = await signInWithCustomToken(auth, initialToken);
-                        currentUser = userCred.user;
+                        try {
+                            const userCred = await signInWithCustomToken(auth, initialToken);
+                            currentUser = userCred.user;
+                        } catch (e) {
+                            const userCred = await signInAnonymously(auth);
+                            currentUser = userCred.user;
+                        }
                     } else {
                         const userCred = await signInAnonymously(auth);
                         currentUser = userCred.user;
@@ -469,9 +520,10 @@
                         isCloudAvailable = true;
                         updateCloudStatusBadge(true);
                         subscribeToCloudSurveys();
+                        syncPendingLocalSurveys();
                     }
                 } else {
-                    console.log("Firebase config not available, using local backup mode.");
+                    console.log("Firebase config not available, using local storage mode.");
                     updateCloudStatusBadge(false);
                     loadLocalBackupHistory();
                 }
@@ -485,11 +537,11 @@
         function updateCloudStatusBadge(online) {
             const badge = document.getElementById('cloud-status-badge');
             if (online) {
-                badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 flex items-center gap-1.5";
-                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Cloud Active (Real-time)`;
+                badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 flex items-center gap-1.5 cursor-pointer hover:bg-emerald-500/30 transition-colors";
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Cloud Active (Real-time Sync)`;
             } else {
-                badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-200 border border-amber-400/30 flex items-center gap-1.5";
-                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span> Mode Lokal`;
+                badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-200 border border-amber-400/30 flex items-center gap-1.5 cursor-pointer hover:bg-amber-500/30 transition-colors";
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span> Mode Lokal (Klik untuk Atur Cloud)`;
             }
         }
 
@@ -497,7 +549,6 @@
         function subscribeToCloudSurveys() {
             if (!db || !currentUser) return;
             
-            // Mandatory Rule 1 & Rule 2: Strict path without complex queries
             const surveysCollection = collection(db, 'artifacts', appId, 'public', 'data', 'surveys');
             
             onSnapshot(surveysCollection, (snapshot) => {
@@ -514,7 +565,6 @@
                 items.sort((a, b) => (b.createdAt || b.id || 0) - (a.createdAt || a.id || 0));
                 window.cloudHistory = items;
                 
-                // Update local storage backup for offline resilience
                 try {
                     localStorage.setItem('entrepreneur_survey_cloud_backup', JSON.stringify(items));
                 } catch(e) {}
@@ -524,6 +574,28 @@
                 console.error("Cloud snapshot listener error:", error);
                 loadLocalBackupHistory();
             });
+        }
+
+        // Auto Sync Pending Offline Data when Cloud becomes available
+        async function syncPendingLocalSurveys() {
+            if (!db || !currentUser || !isCloudAvailable) return;
+            try {
+                const stored = localStorage.getItem('entrepreneur_survey_cloud_backup');
+                if (!stored) return;
+                const localItems = JSON.parse(stored);
+                const unsynced = localItems.filter(item => item.syncedToCloud === false);
+                
+                if (unsynced.length > 0) {
+                    const surveysCollection = collection(db, 'artifacts', appId, 'public', 'data', 'surveys');
+                    for (const item of unsynced) {
+                        const copy = { ...item };
+                        delete copy.syncedToCloud;
+                        await addDoc(surveysCollection, copy);
+                    }
+                }
+            } catch(e) {
+                console.warn("Failed syncing pending local surveys to cloud:", e);
+            }
         }
 
         function loadLocalBackupHistory() {
@@ -664,7 +736,7 @@
 
             const submitBtn = document.getElementById('submit-btn');
             submitBtn.disabled = true;
-            submitBtn.innerHTML = `<span class="inline-block animate-spin mr-2">⏳</span> Menyimpan ke Cloud Server...`;
+            submitBtn.innerHTML = `<span class="inline-block animate-spin mr-2">⏳</span> Menyimpan Data...`;
 
             // Calculate Scores
             let totalScore = 0;
@@ -691,22 +763,25 @@
                 categoryColor: categoryInfo.colorClass,
                 breakdown,
                 answers: { ...window.currentAnswers },
-                userId: currentUser ? currentUser.uid : 'anonymous'
+                userId: currentUser ? currentUser.uid : 'anonymous',
+                syncedToCloud: isCloudAvailable
             };
 
             // Save to Firestore Cloud Database
             try {
                 if (isCloudAvailable && db && currentUser) {
                     const surveysCollection = collection(db, 'artifacts', appId, 'public', 'data', 'surveys');
-                    await addDoc(surveysCollection, submissionData);
+                    const copy = { ...submissionData };
+                    delete copy.syncedToCloud;
+                    await addDoc(surveysCollection, copy);
                 } else {
-                    // Fallback to local array
+                    submissionData.syncedToCloud = false;
                     window.cloudHistory.unshift(submissionData);
                     localStorage.setItem('entrepreneur_survey_cloud_backup', JSON.stringify(window.cloudHistory));
                 }
             } catch (err) {
-                console.error("Gagal menyimpan ke cloud:", err);
-                // Fallback store
+                console.error("Gagal menyimpan ke cloud, menyimpan ke lokal:", err);
+                submissionData.syncedToCloud = false;
                 window.cloudHistory.unshift(submissionData);
                 localStorage.setItem('entrepreneur_survey_cloud_backup', JSON.stringify(window.cloudHistory));
             }
@@ -719,7 +794,108 @@
             window.currentSubmission = submissionData;
             displayResults(submissionData);
             switchTab('result');
-            showModal("Berhasil Disimpan!", "Data survei Anda telah tersimpan secara permanen di Cloud Server sekolah.");
+            showModal("Berhasil Disimpan!", isCloudAvailable ? "Data survei Anda telah tersimpan secara permanen di Cloud Server sekolah." : "Data tersimpan secara lokal. Untuk tersambung ke komputer/HP lain, gunakan fitur Koneksi Cloud atau Impor Data.");
+        };
+
+        // Modal Cloud Setup Controls
+        window.openCloudConfigModal = function() {
+            const infoBox = document.getElementById('cloud-info-box');
+            if (isCloudAvailable) {
+                infoBox.className = "p-3.5 rounded-xl text-xs space-y-1 bg-emerald-50 border border-emerald-200 text-emerald-900";
+                infoBox.innerHTML = `<strong>Status: Cloud Terhubung (Aktif)</strong><br>Seluruh data diisi real-time dan tersinkronisasi lintas HP & Komputer.`;
+            } else {
+                infoBox.className = "p-3.5 rounded-xl text-xs space-y-1 bg-amber-50 border border-amber-200 text-amber-900";
+                infoBox.innerHTML = `<strong>Status: Mode Lokal (Offline)</strong><br>Data tersimpan di browser komputer ini saja. Masukkan Firebase Config sekolah di bawah agar bisa terhubung lintas perangkat.`;
+            }
+            try {
+                const saved = localStorage.getItem('custom_firebase_config');
+                if (saved) document.getElementById('firebase-config-input').value = saved;
+            } catch(e) {}
+
+            document.getElementById('cloud-config-modal').classList.remove('hidden');
+        };
+
+        window.closeCloudConfigModal = function() {
+            document.getElementById('cloud-config-modal').classList.add('hidden');
+        };
+
+        window.saveCustomCloudConfig = function() {
+            const inputVal = document.getElementById('firebase-config-input').value.trim();
+            if (!inputVal) {
+                showModal("Peringatan", "Harap masukkan konfigurasi Firebase JSON yang valid.");
+                return;
+            }
+
+            try {
+                JSON.parse(inputVal);
+                localStorage.setItem('custom_firebase_config', inputVal);
+                showModal("Konfigurasi Disimpan", "Aplikasi akan memuat ulang untuk menghubungkan Cloud Database.");
+                setTimeout(() => location.reload(), 1500);
+            } catch (e) {
+                showModal("Format Salah", "Format JSON Firebase tidak valid. Harap periksa kembali tanda petik dan struktur JSON.");
+            }
+        };
+
+        window.resetCloudConfig = function() {
+            localStorage.removeItem('custom_firebase_config');
+            document.getElementById('firebase-config-input').value = '';
+            showModal("Konfigurasi Direset", "Memuat ulang koneksi standar...");
+            setTimeout(() => location.reload(), 1000);
+        };
+
+        // File Import Handling (JSON/CSV)
+        window.triggerFileImport = function() {
+            document.getElementById('import-file-input').click();
+        };
+
+        window.handleFileImport = function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const content = e.target.result;
+                    let importedItems = [];
+
+                    if (file.name.endsWith('.json')) {
+                        importedItems = JSON.parse(content);
+                    } else if (file.name.endsWith('.csv')) {
+                        showModal("Petunjuk Impor", "Untuk impor file, disarankan menggunakan format backup JSON hasil ekspor.");
+                        return;
+                    }
+
+                    if (!Array.isArray(importedItems)) {
+                        importedItems = [importedItems];
+                    }
+
+                    let addedCount = 0;
+                    for (const item of importedItems) {
+                        if (item.name && item.totalScore) {
+                            if (isCloudAvailable && db && currentUser) {
+                                const surveysCollection = collection(db, 'artifacts', appId, 'public', 'data', 'surveys');
+                                const copy = { ...item };
+                                delete copy.docId;
+                                delete copy.syncedToCloud;
+                                await addDoc(surveysCollection, copy);
+                            } else {
+                                window.cloudHistory.unshift(item);
+                            }
+                            addedCount++;
+                        }
+                    }
+
+                    if (!isCloudAvailable) {
+                        localStorage.setItem('entrepreneur_survey_cloud_backup', JSON.stringify(window.cloudHistory));
+                        renderHistoryTable();
+                    }
+
+                    showModal("Impor Berhasil", `Berhasil menambahkan ${addedCount} data survei ke dalam database.`);
+                } catch (err) {
+                    showModal("Gagal Impor", "Gagal membaca isi file. Pastikan file dalam format JSON hasil backup.");
+                }
+            };
+            reader.readAsText(file);
         };
 
         // Category Interpretation Mapping
@@ -918,7 +1094,7 @@
                 tbody.innerHTML = `
                     <tr>
                         <td colspan="6" class="text-center py-8 text-slate-400 text-xs">
-                            ${history.length === 0 ? 'Belum ada data murid tersimpan di Cloud Server.' : 'Hasil pencarian tidak ditemukan.'}
+                            ${history.length === 0 ? 'Belum ada data murid tersimpan.' : 'Hasil pencarian tidak ditemukan.'}
                         </td>
                     </tr>
                 `;
